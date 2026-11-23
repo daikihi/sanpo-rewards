@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import { evaluateRule, summarizeWalks } from "./calculator";
+import { estimateStepsFromKm, evaluateRule, summarizeWalks } from "./calculator";
 import { DEFAULT_RULES, SAMPLE_WALKS } from "./presets";
 import { PresetPatternId, RewardRule, WalkInput } from "./types";
+import { WalkChart } from "./WalkChart";
 
 const STORAGE_KEY_WALKS = "ww_reward_sim_walks_v1";
 const STORAGE_KEY_RULES = "ww_reward_sim_rules_v1";
@@ -18,14 +19,38 @@ const PATTERN_ICONS: Record<PresetPatternId, string> = {
   distance_linked: "👟",
 };
 
+function normalizeWalk(raw: Partial<WalkInput>, index: number): WalkInput {
+  const distanceKm = Number(raw.distanceKm) || 0;
+  const steps =
+    typeof raw.steps === "number" && Number.isFinite(raw.steps) && raw.steps >= 0
+      ? Math.round(raw.steps)
+      : estimateStepsFromKm(distanceKm);
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : `walk-loaded-${index}`,
+    date: typeof raw.date === "string" && raw.date ? raw.date : new Date().toISOString().slice(0, 10),
+    title: typeof raw.title === "string" && raw.title ? raw.title : "名称未設定ウォーク",
+    plannedFareYen: Number(raw.plannedFareYen) || 0,
+    actualFareYen: Number(raw.actualFareYen) || 0,
+    sustenanceCostYen: Number(raw.sustenanceCostYen) || 0,
+    rewardSpentYen: Number(raw.rewardSpentYen) || 0,
+    distanceKm,
+    steps,
+    durationMinutes: Number(raw.durationMinutes) || 0,
+    detourCount: Number(raw.detourCount) || 0,
+  };
+}
+
 function loadInitialWalks(): WalkInput[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_WALKS);
-    if (!raw) return SAMPLE_WALKS;
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : SAMPLE_WALKS;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => !(typeof item?.id === "string" && item.id.startsWith("sample-")))
+      .map((item, idx) => normalizeWalk(item, idx));
   } catch {
-    return SAMPLE_WALKS;
+    return [];
   }
 }
 
@@ -42,16 +67,20 @@ function loadInitialRules(): RewardRule[] {
 
 export function App() {
   const [walks, setWalks] = useState<WalkInput[]>(loadInitialWalks);
-  const [rules, setRules] = useState<RewardRule[]>(loadInitialRules);
+  const [isSampleMode, setIsSampleMode] = useState(false);
+  const [sampleWalks, setSampleWalks] = useState<WalkInput[]>(SAMPLE_WALKS);
+  const [rules] = useState<RewardRule[]>(loadInitialRules);
   const [mode, setMode] = useState<"single" | "cumulative">("single");
   const [selectedWalkId, setSelectedWalkId] = useState<string>(
     () => walks[0]?.id ?? ""
   );
   const [patternFilter, setPatternFilter] = useState<"all" | PresetPatternId>("all");
   const [pendingDeleteWalk, setPendingDeleteWalk] = useState<WalkInput | null>(null);
-  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+  const confirmDialogRef = useRef<HTMLDialogElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  const deleteDialogTitleId = useId();
+  const confirmDialogTitleId = useId();
+  const stepsInputId = useId();
+  const stepsHintId = useId();
 
   const [title, setTitle] = useState("週末ウォーク");
   const [plannedFareYen, setPlannedFareYen] = useState(500);
@@ -59,6 +88,8 @@ export function App() {
   const [sustenanceCostYen, setSustenanceCostYen] = useState(180);
   const [rewardSpentYen, setRewardSpentYen] = useState(0);
   const [distanceKm, setDistanceKm] = useState(8.5);
+  const [steps, setSteps] = useState(() => estimateStepsFromKm(8.5));
+  const [isStepsManual, setIsStepsManual] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState(110);
   const [detourCount, setDetourCount] = useState(2);
 
@@ -76,17 +107,19 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const dialog = deleteDialogRef.current;
+    const dialog = confirmDialogRef.current;
     if (pendingDeleteWalk && dialog && !dialog.open) {
       dialog.showModal();
     }
   }, [pendingDeleteWalk]);
 
+  const activeWalks = isSampleMode ? sampleWalks : walks;
+
   const targetWalks = useMemo(() => {
-    if (mode === "cumulative") return walks;
-    const found = walks.find((w) => w.id === selectedWalkId);
-    return found ? [found] : walks.slice(0, 1);
-  }, [mode, walks, selectedWalkId]);
+    if (mode === "cumulative") return activeWalks;
+    const found = activeWalks.find((w) => w.id === selectedWalkId);
+    return found ? [found] : activeWalks.slice(0, 1);
+  }, [mode, activeWalks, selectedWalkId]);
 
   const summary = useMemo(() => summarizeWalks(targetWalks), [targetWalks]);
 
@@ -101,7 +134,7 @@ export function App() {
   );
 
   const moodMessage = useMemo(() => {
-    if (walks.length === 0) {
+    if (activeWalks.length === 0) {
       return { icon: "👟", text: "最初のおさんぽを記録してみよう！" };
     }
     if (summary.rewardRemainingYen >= 1000) {
@@ -114,10 +147,33 @@ export function App() {
       return { icon: "🌿", text: "いい距離歩いた！気分リフレッシュ" };
     }
     return { icon: "🚶", text: "少しずつご褒美をためていこう" };
-  }, [walks.length, summary.rewardRemainingYen, summary.distanceKm]);
+  }, [activeWalks.length, summary.rewardRemainingYen, summary.distanceKm]);
+
+  const handleDistanceChange = (nextDistance: number) => {
+    setDistanceKm(nextDistance);
+    if (!isStepsManual) {
+      setSteps(estimateStepsFromKm(nextDistance));
+    }
+  };
+
+  const handleStepsChange = (nextSteps: number) => {
+    setSteps(nextSteps);
+    setIsStepsManual(true);
+  };
+
+  const handleResetStepsEstimate = () => {
+    setSteps(estimateStepsFromKm(distanceKm));
+    setIsStepsManual(false);
+  };
+
+  const handleSelectWalkFromChart = (walkId: string) => {
+    setSelectedWalkId(walkId);
+    setMode("single");
+  };
 
   const handleAddWalk = (e: React.FormEvent) => {
     e.preventDefault();
+    const dist = Number(distanceKm) || 0;
     const newWalk: WalkInput = {
       id: `walk-${Date.now()}`,
       date: new Date().toISOString().slice(0, 10),
@@ -126,48 +182,62 @@ export function App() {
       actualFareYen: Number(actualFareYen) || 0,
       sustenanceCostYen: Number(sustenanceCostYen) || 0,
       rewardSpentYen: Number(rewardSpentYen) || 0,
-      distanceKm: Number(distanceKm) || 0,
+      distanceKm: dist,
+      steps: Math.max(0, Math.round(Number(steps) || 0)),
       durationMinutes: Number(durationMinutes) || 0,
       detourCount: Number(detourCount) || 0,
     };
     setWalks((prev) => [newWalk, ...prev]);
+    setIsSampleMode(false);
     setSelectedWalkId(newWalk.id);
     setMode("single");
+    setIsStepsManual(false);
   };
 
   const handleIncrementDetour = (walkId: string) => {
-    setWalks((prev) =>
-      prev.map((w) => (w.id === walkId ? { ...w, detourCount: w.detourCount + 1 } : w))
-    );
+    const updater = (prev: WalkInput[]) =>
+      prev.map((w) => (w.id === walkId ? { ...w, detourCount: w.detourCount + 1 } : w));
+    if (isSampleMode) {
+      setSampleWalks(updater);
+    } else {
+      setWalks(updater);
+    }
   };
 
   const handleRequestDeleteWalk = (walk: WalkInput) => {
     setPendingDeleteWalk(walk);
   };
 
-  const handleDeleteDialogClose = () => {
-    const dialog = deleteDialogRef.current;
+  const handleEnterSampleMode = () => {
+    setSampleWalks(SAMPLE_WALKS);
+    setIsSampleMode(true);
+    setSelectedWalkId(SAMPLE_WALKS[0]?.id ?? "");
+  };
+
+  const handleExitSampleMode = () => {
+    setIsSampleMode(false);
+    setSelectedWalkId(walks[0]?.id ?? "");
+  };
+
+  const handleConfirmDialogClose = () => {
+    const dialog = confirmDialogRef.current;
     if (!dialog) return;
     const choice = dialog.returnValue;
     dialog.returnValue = "";
 
     if (choice === "delete" && pendingDeleteWalk) {
       const targetId = pendingDeleteWalk.id;
-      const nextWalks = walks.filter((w) => w.id !== targetId);
-      setWalks(nextWalks);
+      const nextList = activeWalks.filter((w) => w.id !== targetId);
+      if (isSampleMode) {
+        setSampleWalks(nextList);
+      } else {
+        setWalks(nextList);
+      }
       if (selectedWalkId === targetId) {
-        setSelectedWalkId(nextWalks[0]?.id ?? "");
+        setSelectedWalkId(nextList[0]?.id ?? "");
       }
     }
     setPendingDeleteWalk(null);
-  };
-
-  const handleResetAll = () => {
-    localStorage.removeItem(STORAGE_KEY_WALKS);
-    localStorage.removeItem(STORAGE_KEY_RULES);
-    setWalks(SAMPLE_WALKS);
-    setRules(DEFAULT_RULES);
-    setSelectedWalkId(SAMPLE_WALKS[0].id);
   };
 
   return (
@@ -184,12 +254,37 @@ export function App() {
           <p className="hero-subtitle">
             歩いたぶんだけ、ご褒美がたまる！水分・飴・グミなどの補給コストは別枠なので、ご褒美枠は減りません。
           </p>
+          <p className="hero-privacy-note">
+            <span aria-hidden="true">🔒</span>
+            <span>
+              記録はこのスマホやパソコンの中だけで完結し、外部サーバーへデータが送信されることはありません。
+            </span>
+          </p>
         </div>
         <div className="hero-mood-pill" role="status" aria-live="polite">
           <span aria-hidden="true">{moodMessage.icon}</span>
           <span>{moodMessage.text}</span>
         </div>
       </header>
+
+      {isSampleMode && (
+        <div className="sample-mode-banner" role="status" aria-live="polite">
+          <div className="sample-mode-text">
+            <span aria-hidden="true">👀</span>
+            <span>
+              <strong>サンプルデータを表示中（{sampleWalks.length}件）</strong>
+              　自分の記録には影響しません。
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleExitSampleMode}
+            className="primary-button sample-exit-button"
+          >
+            自分の記録に戻る（{walks.length}件）
+          </button>
+        </div>
+      )}
 
       <section className="control-bar" aria-label="表示切替">
         <div className="segmented-control" role="group" aria-label="集計モード">
@@ -207,19 +302,19 @@ export function App() {
             className={`pill-button${mode === "cumulative" ? " is-active" : ""}`}
             aria-pressed={mode === "cumulative"}
           >
-            累積表示（全 {walks.length} 件）
+            累積表示（全 {activeWalks.length} 件）
           </button>
         </div>
 
         {mode === "single" &&
-          (walks.length > 0 ? (
+          (activeWalks.length > 0 ? (
             <select
               className="walk-select"
               value={selectedWalkId}
               onChange={(e) => setSelectedWalkId(e.target.value)}
               aria-label="対象ウォーク選択"
             >
-              {walks.map((w) => (
+              {activeWalks.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.date} — {w.title}（{w.distanceKm}km）
                 </option>
@@ -229,9 +324,15 @@ export function App() {
             <span className="summary-meta">記録がありません</span>
           ))}
 
-        <button type="button" onClick={handleResetAll} className="ghost-button">
-          サンプル初期化
-        </button>
+        {isSampleMode ? (
+          <button type="button" onClick={handleExitSampleMode} className="ghost-button">
+            自分の記録に戻る
+          </button>
+        ) : (
+          <button type="button" onClick={handleEnterSampleMode} className="ghost-button">
+            サンプルを見る
+          </button>
+        )}
       </section>
 
       <section className="summary-grid" aria-label="集計サマリー">
@@ -273,13 +374,14 @@ export function App() {
         <div className="summary-card summary-card--walk">
           <div className="summary-label">
             <span aria-hidden="true">👟</span>
-            <span>距離・時間・寄り道</span>
+            <span>歩数・距離・寄り道</span>
           </div>
           <strong className="summary-value summary-value--compact">
-            {summary.distanceKm} km / {summary.durationMinutes} 分
+            {summary.totalSteps.toLocaleString()} 歩
           </strong>
           <div className="summary-meta">
-            <span aria-hidden="true">📍 </span>寄り道・発見: {summary.detourCount} 件
+            {summary.distanceKm} km / {summary.durationMinutes} 分 ・{" "}
+            <span aria-hidden="true">📍 </span>寄り道 {summary.detourCount} 件
           </div>
         </div>
       </section>
@@ -357,6 +459,13 @@ export function App() {
         </div>
       </section>
 
+      <WalkChart
+        walks={activeWalks}
+        selectedWalkId={selectedWalkId}
+        onSelectWalk={handleSelectWalkFromChart}
+        onLoadSample={isSampleMode ? undefined : handleEnterSampleMode}
+      />
+
       <section className="panel-card" aria-label="ウォーク記録を追加">
         <h2 className="section-title">
           <span aria-hidden="true">✍️</span>
@@ -410,9 +519,32 @@ export function App() {
               step="0.1"
               min={0}
               value={distanceKm}
-              onChange={(e) => setDistanceKm(Number(e.target.value))}
+              onChange={(e) => handleDistanceChange(Number(e.target.value))}
             />
           </label>
+          <div className="walk-field">
+            <div className="walk-field-label walk-field-label--with-action">
+              <label htmlFor={stepsInputId}>歩数（歩）</label>
+              {isStepsManual && (
+                <button
+                  type="button"
+                  className="inline-reset-link"
+                  onClick={handleResetStepsEstimate}
+                >
+                  目安に戻す
+                </button>
+              )}
+            </div>
+            <input
+              id={stepsInputId}
+              type="number"
+              min={0}
+              step={100}
+              value={steps}
+              aria-describedby={stepsHintId}
+              onChange={(e) => handleStepsChange(Number(e.target.value))}
+            />
+          </div>
           <label className="walk-field">
             <span className="walk-field-label">時間（分）</span>
             <input
@@ -435,6 +567,9 @@ export function App() {
             <button type="submit" className="primary-button">
               <span aria-hidden="true">＋ </span>記録を追加する
             </button>
+            <span id={stepsHintId} className="form-hint">
+              ※ 歩数は距離から自動計算（1km ≈ 1,400歩）されます。手入力での修正もできます。
+            </span>
           </div>
         </form>
       </section>
@@ -443,17 +578,30 @@ export function App() {
         <div className="section-header">
           <h2 className="section-title">
             <span aria-hidden="true">🗺️</span>
-            <span>おさんぽログ（{walks.length} 件）</span>
+            <span>
+              {isSampleMode ? "サンプルのおさんぽログ" : "おさんぽログ"}（{activeWalks.length} 件）
+            </span>
           </h2>
         </div>
 
-        {walks.length === 0 ? (
+        {activeWalks.length === 0 ? (
           <div className="empty-state">
-            まだ記録がありません。上のフォームから追加するか、「サンプル初期化」でサンプルを復元できます。
+            <p style={{ margin: "0 0 12px" }}>
+              {isSampleMode
+                ? "サンプルをすべて削除しました。自分の記録に戻るか、もう一度サンプルを読み込めます。"
+                : "まだ記録がありません。上のフォームからさんぽを記録するか、サンプルデータで動きを試せます。"}
+            </p>
+            <button
+              type="button"
+              onClick={isSampleMode ? handleExitSampleMode : handleEnterSampleMode}
+              className="secondary-button"
+            >
+              {isSampleMode ? "自分の記録に戻る" : "サンプルを見る"}
+            </button>
           </div>
         ) : (
           <ul className="walk-log-list">
-            {walks.map((w) => {
+            {activeWalks.map((w) => {
               const saved = Math.max(0, w.plannedFareYen - w.actualFareYen);
               const isSelected = mode === "single" && w.id === selectedWalkId;
               return (
@@ -474,6 +622,16 @@ export function App() {
                       <span className="metric-chip">
                         <span aria-hidden="true">💧</span>
                         <span>補給 {w.sustenanceCostYen.toLocaleString()}円</span>
+                      </span>
+                      {w.rewardSpentYen > 0 && (
+                        <span className="metric-chip">
+                          <span aria-hidden="true">🍰</span>
+                          <span>ご褒美 {w.rewardSpentYen.toLocaleString()}円</span>
+                        </span>
+                      )}
+                      <span className="metric-chip">
+                        <span aria-hidden="true">👣</span>
+                        <span>{w.steps.toLocaleString()} 歩</span>
                       </span>
                       <span className="metric-chip">
                         <span aria-hidden="true">👟</span>
@@ -510,15 +668,15 @@ export function App() {
       </section>
 
       <footer className="app-footer">
-        データはすべてお使いのブラウザ内（<code>localStorage</code>）に保存され、外部には送信されません。
+        保存先：ブラウザ内ストレージ（<code>localStorage</code>）
       </footer>
 
       <dialog
-        ref={deleteDialogRef}
-        aria-labelledby={deleteDialogTitleId}
-        onClose={handleDeleteDialogClose}
+        ref={confirmDialogRef}
+        aria-labelledby={confirmDialogTitleId}
+        onClose={handleConfirmDialogClose}
       >
-        <h2 id={deleteDialogTitleId} className="confirm-dialog-title">
+        <h2 id={confirmDialogTitleId} className="confirm-dialog-title">
           記録を削除しますか？
         </h2>
         <p className="confirm-dialog-message">

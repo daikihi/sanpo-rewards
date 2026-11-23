@@ -11,6 +11,7 @@ export interface WalkInput {
   sustenanceCostYen: number; // 水分・飴・グミ等の補給コスト（ご褒美枠と分離）
   rewardSpentYen: number;    // すでに使ったご褒美支出（円）
   distanceKm: number;        // 歩行距離（km）
+  steps: number;             // 歩数（歩）
   durationMinutes: number;   // 歩行時間（分）
   detourCount: number;       // 寄り道・発見数（軽量カウント）
 }
@@ -42,6 +43,7 @@ export interface WalkSummary {
   rewardSpentYen: number;     // ご褒美支出
   rewardRemainingYen: number; // ご褒美に回せる残余額
   distanceKm: number;
+  totalSteps: number;
   durationMinutes: number;
   detourCount: number;
 }

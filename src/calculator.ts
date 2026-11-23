@@ -1,7 +1,13 @@
 import { EvaluatedRule, RewardRule, WalkInput, WalkSummary } from "./types";
 
+export const STEPS_PER_KM = 1400;
+
 function nonNeg(n: number): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function estimateStepsFromKm(distanceKm: number): number {
+  return Math.round(nonNeg(distanceKm) * STEPS_PER_KM);
 }
 
 function roundToDecimals(value: number, decimals: number): number {
@@ -15,6 +21,7 @@ export function summarizeWalks(records: WalkInput[]): WalkSummary {
   let sustenanceCostYen = 0;
   let rewardSpentYen = 0;
   let distanceKm = 0;
+  let totalSteps = 0;
   let durationMinutes = 0;
   let detourCount = 0;
 
@@ -22,11 +29,17 @@ export function summarizeWalks(records: WalkInput[]): WalkSummary {
     const planned = nonNeg(r.plannedFareYen);
     const actual = nonNeg(r.actualFareYen);
     const saved = Math.max(0, planned - actual);
+    const dist = nonNeg(r.distanceKm);
+    const steps =
+      typeof r.steps === "number" && Number.isFinite(r.steps) && r.steps >= 0
+        ? Math.round(r.steps)
+        : estimateStepsFromKm(dist);
 
     grossSavedFareYen += saved;
     sustenanceCostYen += nonNeg(r.sustenanceCostYen);
     rewardSpentYen += nonNeg(r.rewardSpentYen);
-    distanceKm += nonNeg(r.distanceKm);
+    distanceKm += dist;
+    totalSteps += steps;
     durationMinutes += nonNeg(r.durationMinutes);
     detourCount += Math.max(0, Math.floor(nonNeg(r.detourCount)));
   }
@@ -39,6 +52,7 @@ export function summarizeWalks(records: WalkInput[]): WalkSummary {
     rewardSpentYen,
     rewardRemainingYen,
     distanceKm: roundToDecimals(distanceKm, 2),
+    totalSteps,
     durationMinutes: Math.round(durationMinutes),
     detourCount,
   };
