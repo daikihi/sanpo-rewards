@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { evaluateRule, summarizeWalks } from "./calculator";
 import { DEFAULT_RULES, SAMPLE_WALKS } from "./presets";
 import { PresetPatternId, RewardRule, WalkInput } from "./types";
@@ -17,7 +17,7 @@ function loadInitialWalks(): WalkInput[] {
     const raw = localStorage.getItem(STORAGE_KEY_WALKS);
     if (!raw) return SAMPLE_WALKS;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SAMPLE_WALKS;
+    return Array.isArray(parsed) ? parsed : SAMPLE_WALKS;
   } catch {
     return SAMPLE_WALKS;
   }
@@ -39,9 +39,13 @@ export function App() {
   const [rules, setRules] = useState<RewardRule[]>(loadInitialRules);
   const [mode, setMode] = useState<"single" | "cumulative">("single");
   const [selectedWalkId, setSelectedWalkId] = useState<string>(
-    () => loadInitialWalks()[0]?.id ?? "walk-1"
+    () => walks[0]?.id ?? ""
   );
   const [patternFilter, setPatternFilter] = useState<"all" | PresetPatternId>("all");
+  const [pendingDeleteWalk, setPendingDeleteWalk] = useState<WalkInput | null>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteDialogTitleId = useId();
 
   const [title, setTitle] = useState("週末ウォーク");
   const [plannedFareYen, setPlannedFareYen] = useState(500);
@@ -59,6 +63,18 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules));
   }, [rules]);
+
+  useEffect(() => {
+    // React の autoFocus は HTML autofocus 属性を出力しないため、ネイティブ showModal() の初期フォーカス用に付与する
+    cancelButtonRef.current?.setAttribute("autofocus", "");
+  }, []);
+
+  useEffect(() => {
+    const dialog = deleteDialogRef.current;
+    if (pendingDeleteWalk && dialog && !dialog.open) {
+      dialog.showModal();
+    }
+  }, [pendingDeleteWalk]);
 
   const targetWalks = useMemo(() => {
     if (mode === "cumulative") return walks;
@@ -103,6 +119,27 @@ export function App() {
     );
   };
 
+  const handleRequestDeleteWalk = (walk: WalkInput) => {
+    setPendingDeleteWalk(walk);
+  };
+
+  const handleDeleteDialogClose = () => {
+    const dialog = deleteDialogRef.current;
+    if (!dialog) return;
+    const choice = dialog.returnValue;
+    dialog.returnValue = "";
+
+    if (choice === "delete" && pendingDeleteWalk) {
+      const targetId = pendingDeleteWalk.id;
+      const nextWalks = walks.filter((w) => w.id !== targetId);
+      setWalks(nextWalks);
+      if (selectedWalkId === targetId) {
+        setSelectedWalkId(nextWalks[0]?.id ?? "");
+      }
+    }
+    setPendingDeleteWalk(null);
+  };
+
   const handleResetAll = () => {
     localStorage.removeItem(STORAGE_KEY_WALKS);
     localStorage.removeItem(STORAGE_KEY_RULES);
@@ -134,19 +171,22 @@ export function App() {
           累積表示（全 {walks.length} 件）
         </button>
 
-        {mode === "single" && (
-          <select
-            value={selectedWalkId}
-            onChange={(e) => setSelectedWalkId(e.target.value)}
-            aria-label="対象ウォーク選択"
-          >
-            {walks.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.date} — {w.title}（{w.distanceKm}km）
-              </option>
-            ))}
-          </select>
-        )}
+        {mode === "single" &&
+          (walks.length > 0 ? (
+            <select
+              value={selectedWalkId}
+              onChange={(e) => setSelectedWalkId(e.target.value)}
+              aria-label="対象ウォーク選択"
+            >
+              {walks.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.date} — {w.title}（{w.distanceKm}km）
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ fontSize: 13, color: "#666" }}>記録がありません</span>
+          ))}
 
         <button type="button" onClick={handleResetAll} style={{ marginLeft: "auto" }}>
           サンプル初期化
@@ -314,21 +354,63 @@ export function App() {
 
       <section>
         <h2 style={{ fontSize: 18 }}>記録一覧</h2>
-        <ul style={{ paddingLeft: 18 }}>
-          {walks.map((w) => {
-            const saved = Math.max(0, w.plannedFareYen - w.actualFareYen);
-            return (
-              <li key={w.id} style={{ marginBottom: 8 }}>
-                <strong>{w.date}</strong> {w.title} — 浮いた運賃 <strong>{saved}円</strong> / 補給{" "}
-                {w.sustenanceCostYen}円 / {w.distanceKm}km / 寄り道 <strong>{w.detourCount}件</strong>{" "}
-                <button type="button" onClick={() => handleIncrementDetour(w.id)}>
-                  寄り道 +1
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {walks.length === 0 ? (
+          <p style={{ color: "#666", fontSize: 14 }}>
+            記録がありません。上のフォームから追加するか、「サンプル初期化」でサンプルを復元できます。
+          </p>
+        ) : (
+          <ul style={{ paddingLeft: 18 }}>
+            {walks.map((w) => {
+              const saved = Math.max(0, w.plannedFareYen - w.actualFareYen);
+              return (
+                <li key={w.id} style={{ marginBottom: 8 }}>
+                  <strong>{w.date}</strong> {w.title} — 浮いた運賃 <strong>{saved}円</strong> / 補給{" "}
+                  {w.sustenanceCostYen}円 / {w.distanceKm}km / 寄り道 <strong>{w.detourCount}件</strong>{" "}
+                  <button type="button" onClick={() => handleIncrementDetour(w.id)}>
+                    寄り道 +1
+                  </button>{" "}
+                  <button
+                    type="button"
+                    onClick={() => handleRequestDeleteWalk(w)}
+                    aria-label={`${w.date} ${w.title} を削除`}
+                    style={{ color: "#c62828" }}
+                  >
+                    削除
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
+
+      <dialog
+        ref={deleteDialogRef}
+        aria-labelledby={deleteDialogTitleId}
+        onClose={handleDeleteDialogClose}
+      >
+        <h2 id={deleteDialogTitleId} className="confirm-dialog-title">
+          記録を削除しますか？
+        </h2>
+        <p className="confirm-dialog-message">
+          {pendingDeleteWalk
+            ? `「${pendingDeleteWalk.date} ${pendingDeleteWalk.title}」を削除します。この操作は取り消せません。`
+            : ""}
+        </p>
+        <form method="dialog" className="confirm-dialog-actions">
+          <button
+            ref={cancelButtonRef}
+            type="submit"
+            value="cancel"
+            className="secondary-button"
+          >
+            キャンセル
+          </button>
+          <button type="submit" value="delete" className="danger-button">
+            削除する
+          </button>
+        </form>
+      </dialog>
     </main>
   );
 }
