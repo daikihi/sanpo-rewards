@@ -12,6 +12,12 @@ const PATTERN_LABELS: Record<PresetPatternId, string> = {
   distance_linked: "距離連動",
 };
 
+const PATTERN_ICONS: Record<PresetPatternId, string> = {
+  instant: "🍰",
+  accumulate: "🪙",
+  distance_linked: "👟",
+};
+
 function loadInitialWalks(): WalkInput[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_WALKS);
@@ -94,6 +100,22 @@ export function App() {
     [visibleRules, summary]
   );
 
+  const moodMessage = useMemo(() => {
+    if (walks.length === 0) {
+      return { icon: "👟", text: "最初のおさんぽを記録してみよう！" };
+    }
+    if (summary.rewardRemainingYen >= 1000) {
+      return { icon: "🎉", text: "たっぷりご褒美タイムいけそう！" };
+    }
+    if (summary.rewardRemainingYen >= 500) {
+      return { icon: "🍰", text: "プチご褒美OK！カフェやパン屋さんへ" };
+    }
+    if (summary.distanceKm >= 5) {
+      return { icon: "🌿", text: "いい距離歩いた！気分リフレッシュ" };
+    }
+    return { icon: "🚶", text: "少しずつご褒美をためていこう" };
+  }, [walks.length, summary.rewardRemainingYen, summary.distanceKm]);
+
   const handleAddWalk = (e: React.FormEvent) => {
     e.preventDefault();
     const newWalk: WalkInput = {
@@ -149,31 +171,50 @@ export function App() {
   };
 
   return (
-    <main style={{ maxWidth: 920, margin: "0 auto", padding: "24px 16px", fontFamily: "sans-serif" }}>
-      <h1>コスト換算／ご褒美シミュレータ</h1>
-      <p style={{ color: "#555" }}>
-        静的・ローカル完結（<code>localStorage</code> 保存）。水分・飴・グミなどの補給コストは別枠とし、ご褒美枠を削らない設計です。
-      </p>
+    <main className="app-shell">
+      <header className="hero-header">
+        <div>
+          <div className="hero-eyebrow">
+            <span aria-hidden="true">🌿</span>
+            <span>週末おさんぽ＆ご褒美手帳</span>
+          </div>
+          <h1 className="hero-title">
+            <span aria-hidden="true">🚶 </span>さんぽご褒美シミュレータ
+          </h1>
+          <p className="hero-subtitle">
+            歩いたぶんだけ、ご褒美がたまる！水分・飴・グミなどの補給コストは別枠なので、ご褒美枠は減りません。
+          </p>
+        </div>
+        <div className="hero-mood-pill" role="status" aria-live="polite">
+          <span aria-hidden="true">{moodMessage.icon}</span>
+          <span>{moodMessage.text}</span>
+        </div>
+      </header>
 
-      <section style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
-        <button
-          type="button"
-          onClick={() => setMode("single")}
-          style={{ fontWeight: mode === "single" ? "bold" : "normal" }}
-        >
-          単発表示
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("cumulative")}
-          style={{ fontWeight: mode === "cumulative" ? "bold" : "normal" }}
-        >
-          累積表示（全 {walks.length} 件）
-        </button>
+      <section className="control-bar" aria-label="表示切替">
+        <div className="segmented-control" role="group" aria-label="集計モード">
+          <button
+            type="button"
+            onClick={() => setMode("single")}
+            className={`pill-button${mode === "single" ? " is-active" : ""}`}
+            aria-pressed={mode === "single"}
+          >
+            単発表示
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("cumulative")}
+            className={`pill-button${mode === "cumulative" ? " is-active" : ""}`}
+            aria-pressed={mode === "cumulative"}
+          >
+            累積表示（全 {walks.length} 件）
+          </button>
+        </div>
 
         {mode === "single" &&
           (walks.length > 0 ? (
             <select
+              className="walk-select"
               value={selectedWalkId}
               onChange={(e) => setSelectedWalkId(e.target.value)}
               aria-label="対象ウォーク選択"
@@ -185,88 +226,142 @@ export function App() {
               ))}
             </select>
           ) : (
-            <span style={{ fontSize: 13, color: "#666" }}>記録がありません</span>
+            <span className="summary-meta">記録がありません</span>
           ))}
 
-        <button type="button" onClick={handleResetAll} style={{ marginLeft: "auto" }}>
+        <button type="button" onClick={handleResetAll} className="ghost-button">
           サンプル初期化
         </button>
       </section>
 
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 12,
-          marginBottom: 24,
-        }}
-      >
-        <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-          <div>浮いた交通費（グロス）</div>
-          <strong style={{ fontSize: 22 }}>{summary.grossSavedFareYen.toLocaleString()} 円</strong>
+      <section className="summary-grid" aria-label="集計サマリー">
+        <div className="summary-card summary-card--fare">
+          <div className="summary-label">
+            <span aria-hidden="true">🚃</span>
+            <span>浮いた交通費（グロス）</span>
+          </div>
+          <strong className="summary-value">
+            {summary.grossSavedFareYen.toLocaleString()} 円
+          </strong>
+          <div className="summary-meta">歩いたおかげで節約できた運賃</div>
         </div>
-        <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-          <div>ご褒美残余枠</div>
-          <strong style={{ fontSize: 22 }}>{summary.rewardRemainingYen.toLocaleString()} 円</strong>
-          <div style={{ fontSize: 12, color: "#666" }}>ご褒美支出: {summary.rewardSpentYen} 円</div>
+
+        <div className="summary-card summary-card--reward">
+          <div className="summary-label">
+            <span aria-hidden="true">🍰</span>
+            <span>ご褒美に使える残余枠</span>
+          </div>
+          <strong className="summary-value">
+            {summary.rewardRemainingYen.toLocaleString()} 円
+          </strong>
+          <div className="summary-meta">
+            使用済みご褒美: {summary.rewardSpentYen.toLocaleString()} 円
+          </div>
         </div>
-        <div style={{ border: "1px solid #f0c36d", background: "#fffdf5", borderRadius: 8, padding: 12 }}>
-          <div>補給コスト（別枠）</div>
-          <strong style={{ fontSize: 22 }}>{summary.sustenanceCostYen.toLocaleString()} 円</strong>
-          <div style={{ fontSize: 12, color: "#666" }}>水分・飴・グミ等（減額対象外）</div>
+
+        <div className="summary-card summary-card--sustenance">
+          <div className="summary-label">
+            <span aria-hidden="true">💧</span>
+            <span>補給コスト（別枠）</span>
+          </div>
+          <strong className="summary-value">
+            {summary.sustenanceCostYen.toLocaleString()} 円
+          </strong>
+          <div className="summary-meta">水分・飴・グミ等（減額対象外）</div>
         </div>
-        <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-          <div>距離・時間・寄り道</div>
-          <strong style={{ fontSize: 18 }}>
+
+        <div className="summary-card summary-card--walk">
+          <div className="summary-label">
+            <span aria-hidden="true">👟</span>
+            <span>距離・時間・寄り道</span>
+          </div>
+          <strong className="summary-value summary-value--compact">
             {summary.distanceKm} km / {summary.durationMinutes} 分
           </strong>
-          <div style={{ fontSize: 13 }}>寄り道・発見: {summary.detourCount} 件</div>
+          <div className="summary-meta">
+            <span aria-hidden="true">📍 </span>寄り道・発見: {summary.detourCount} 件
+          </div>
         </div>
       </section>
 
-      <section style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>ご褒美換算パターン</h2>
-          {(["all", "instant", "accumulate", "distance_linked"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setPatternFilter(p)}
-              style={{ fontWeight: patternFilter === p ? "bold" : "normal" }}
-            >
-              {p === "all" ? "すべて" : PATTERN_LABELS[p]}
-            </button>
-          ))}
+      <section className="section-block" aria-label="ご褒美換算パターン">
+        <div className="section-header">
+          <h2 className="section-title">
+            <span aria-hidden="true">🎁</span>
+            <span>ご褒美換算パターン</span>
+          </h2>
+          <div className="filter-pills" role="group" aria-label="パターン絞り込み">
+            {(["all", "instant", "accumulate", "distance_linked"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPatternFilter(p)}
+                className={`filter-pill${patternFilter === p ? " is-active" : ""}`}
+                aria-pressed={patternFilter === p}
+              >
+                <span aria-hidden="true">
+                  {p === "all" ? "✨ " : `${PATTERN_ICONS[p]} `}
+                </span>
+                {p === "all" ? "すべて" : PATTERN_LABELS[p]}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {evaluatedRules.map(({ rule, displayValue, remainderToNext }) => (
-            <div key={rule.id} style={{ border: "1px solid #ccc", borderRadius: 8, padding: 14 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>{PATTERN_LABELS[rule.pattern]}</div>
-              <div style={{ fontWeight: "bold", marginTop: 2 }}>{rule.name}</div>
-              <div style={{ fontSize: 24, margin: "8px 0" }}>
-                {displayValue} <span style={{ fontSize: 15 }}>{rule.unitLabel}</span>
-              </div>
-              <div style={{ fontSize: 12, color: "#555" }}>
-                次の1単位まであと{" "}
-                <strong>
-                  {remainderToNext} {rule.basis === "fare" ? "円" : "km"}
-                </strong>
-              </div>
-              <p style={{ fontSize: 12, color: "#777", marginBottom: 0 }}>{rule.description}</p>
-            </div>
-          ))}
+        <div className="rules-grid">
+          {evaluatedRules.map(({ rule, displayValue, integerUnits, remainderToNext }) => {
+            const maxStep = rule.unitAmount > 0 ? rule.unitAmount : 1;
+            const currentStep = Math.max(0, Math.min(maxStep, maxStep - remainderToNext));
+            const progressPct = Math.round((currentStep / maxStep) * 100);
+            const nextUnitLabel = rule.basis === "fare" ? "円" : "km";
+
+            return (
+              <article key={rule.id} className={`rule-card rule-card--${rule.pattern}`}>
+                <div className="rule-card-top">
+                  <span className="rule-badge">
+                    <span aria-hidden="true">{PATTERN_ICONS[rule.pattern]}</span>
+                    <span>{PATTERN_LABELS[rule.pattern]}</span>
+                  </span>
+                  {integerUnits > 0 && (
+                    <span className="rule-achieved-tag">{integerUnits} 達成!</span>
+                  )}
+                </div>
+
+                <div className="rule-name">{rule.name}</div>
+
+                <div className="rule-value-row">
+                  <span className="rule-value">{displayValue}</span>
+                  <span className="rule-unit">{rule.unitLabel}</span>
+                </div>
+
+                <div className="rule-progress-wrap">
+                  <progress
+                    className="rule-progress"
+                    max={maxStep}
+                    value={currentStep}
+                    aria-label={`${rule.name}の次の1単位までの進捗（${progressPct}%）`}
+                  />
+                  <div className="rule-next">
+                    次の1単位まであと{" "}
+                    <strong>
+                      {remainderToNext} {nextUnitLabel}
+                    </strong>{" "}
+                    （{progressPct}%）
+                  </div>
+                </div>
+
+                <p className="rule-description">{rule.description}</p>
+              </article>
+            );
+          })}
         </div>
       </section>
 
-      <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 24 }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>ウォーク記録を追加</h2>
+      <section className="panel-card" aria-label="ウォーク記録を追加">
+        <h2 className="section-title">
+          <span aria-hidden="true">✍️</span>
+          <span>さんぽ記録を追加</span>
+        </h2>
         <form onSubmit={handleAddWalk} className="walk-form">
           <label className="walk-field">
             <span className="walk-field-label">タイトル</span>
@@ -337,42 +432,86 @@ export function App() {
             />
           </label>
           <div className="walk-form-submit">
-            <button type="submit">記録を追加</button>
+            <button type="submit" className="primary-button">
+              <span aria-hidden="true">＋ </span>記録を追加する
+            </button>
           </div>
         </form>
       </section>
 
-      <section>
-        <h2 style={{ fontSize: 18 }}>記録一覧</h2>
+      <section className="section-block" aria-label="記録一覧">
+        <div className="section-header">
+          <h2 className="section-title">
+            <span aria-hidden="true">🗺️</span>
+            <span>おさんぽログ（{walks.length} 件）</span>
+          </h2>
+        </div>
+
         {walks.length === 0 ? (
-          <p style={{ color: "#666", fontSize: 14 }}>
-            記録がありません。上のフォームから追加するか、「サンプル初期化」でサンプルを復元できます。
-          </p>
+          <div className="empty-state">
+            まだ記録がありません。上のフォームから追加するか、「サンプル初期化」でサンプルを復元できます。
+          </div>
         ) : (
-          <ul style={{ paddingLeft: 18 }}>
+          <ul className="walk-log-list">
             {walks.map((w) => {
               const saved = Math.max(0, w.plannedFareYen - w.actualFareYen);
+              const isSelected = mode === "single" && w.id === selectedWalkId;
               return (
-                <li key={w.id} style={{ marginBottom: 8 }}>
-                  <strong>{w.date}</strong> {w.title} — 浮いた運賃 <strong>{saved}円</strong> / 補給{" "}
-                  {w.sustenanceCostYen}円 / {w.distanceKm}km / 寄り道 <strong>{w.detourCount}件</strong>{" "}
-                  <button type="button" onClick={() => handleIncrementDetour(w.id)}>
-                    寄り道 +1
-                  </button>{" "}
-                  <button
-                    type="button"
-                    onClick={() => handleRequestDeleteWalk(w)}
-                    aria-label={`${w.date} ${w.title} を削除`}
-                    style={{ color: "#c62828" }}
-                  >
-                    削除
-                  </button>
+                <li
+                  key={w.id}
+                  className={`walk-log-item${isSelected ? " is-selected" : ""}`}
+                >
+                  <div className="walk-log-main">
+                    <div className="walk-log-head">
+                      <span className="walk-date-chip">{w.date}</span>
+                      <span className="walk-log-title">{w.title}</span>
+                    </div>
+                    <div className="walk-log-metrics">
+                      <span className="metric-chip">
+                        <span aria-hidden="true">🚃</span>
+                        <span>浮いた運賃 {saved.toLocaleString()}円</span>
+                      </span>
+                      <span className="metric-chip">
+                        <span aria-hidden="true">💧</span>
+                        <span>補給 {w.sustenanceCostYen.toLocaleString()}円</span>
+                      </span>
+                      <span className="metric-chip">
+                        <span aria-hidden="true">👟</span>
+                        <span>{w.distanceKm} km</span>
+                      </span>
+                      <span className="metric-chip">
+                        <span aria-hidden="true">📍</span>
+                        <span>寄り道 {w.detourCount}件</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="walk-log-actions">
+                    <button
+                      type="button"
+                      onClick={() => handleIncrementDetour(w.id)}
+                      className="detour-button"
+                    >
+                      <span aria-hidden="true">✨ </span>寄り道 +1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRequestDeleteWalk(w)}
+                      aria-label={`${w.date} ${w.title} を削除`}
+                      className="delete-outline-button"
+                    >
+                      削除
+                    </button>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
       </section>
+
+      <footer className="app-footer">
+        データはすべてお使いのブラウザ内（<code>localStorage</code>）に保存され、外部には送信されません。
+      </footer>
 
       <dialog
         ref={deleteDialogRef}
