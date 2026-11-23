@@ -267,86 +267,76 @@ export function App() {
 
       <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 24 }}>
         <h2 style={{ marginTop: 0, fontSize: 18 }}>ウォーク記録を追加</h2>
-        <form
-          onSubmit={handleAddWalk}
-          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}
-        >
-          <label>
-            タイトル
-            <input value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: "100%" }} />
+        <form onSubmit={handleAddWalk} className="walk-form">
+          <label className="walk-field">
+            <span className="walk-field-label">タイトル</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          <label>
-            想定運賃（円）
+          <label className="walk-field">
+            <span className="walk-field-label">想定運賃（円）</span>
             <input
               type="number"
               min={0}
               value={plannedFareYen}
               onChange={(e) => setPlannedFareYen(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <label>
-            実支払運賃（円）
+          <label className="walk-field">
+            <span className="walk-field-label">実支払運賃（円）</span>
             <input
               type="number"
               min={0}
               value={actualFareYen}
               onChange={(e) => setActualFareYen(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <label>
-            補給：水分・飴・グミ（円）
+          <label className="walk-field">
+            <span className="walk-field-label">補給：水分・飴・グミ（円）</span>
             <input
               type="number"
               min={0}
               value={sustenanceCostYen}
               onChange={(e) => setSustenanceCostYen(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <label>
-            ご褒美支出（円）
+          <label className="walk-field">
+            <span className="walk-field-label">ご褒美支出（円）</span>
             <input
               type="number"
               min={0}
               value={rewardSpentYen}
               onChange={(e) => setRewardSpentYen(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <label>
-            距離（km）
+          <label className="walk-field">
+            <span className="walk-field-label">距離（km）</span>
             <input
               type="number"
               step="0.1"
               min={0}
               value={distanceKm}
               onChange={(e) => setDistanceKm(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <label>
-            時間（分）
+          <label className="walk-field">
+            <span className="walk-field-label">時間（分）</span>
             <input
               type="number"
               min={0}
               value={durationMinutes}
               onChange={(e) => setDurationMinutes(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <label>
-            寄り道・発見数
+          <label className="walk-field">
+            <span className="walk-field-label">寄り道・発見数</span>
             <input
               type="number"
               min={0}
               value={detourCount}
               onChange={(e) => setDetourCount(Number(e.target.value))}
-              style={{ width: "100%" }}
             />
           </label>
-          <div style={{ gridColumn: "1 / -1" }}>
+          <div className="walk-form-submit">
             <button type="submit">記録を追加</button>
           </div>
         </form>

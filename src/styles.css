@@ -1,3 +1,44 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.walk-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  column-gap: 12px;
+  row-gap: 4px;
+}
+
+.walk-field {
+  grid-row: span 2;
+  display: grid;
+  /* Same-cascade fallback for browsers without subgrid */
+  grid-template-rows: auto auto;
+  grid-template-rows: subgrid;
+  margin-block-end: 10px;
+  font-size: 14px;
+}
+
+.walk-field-label {
+  align-self: end;
+  line-height: 1.35;
+}
+
+.walk-field input {
+  inline-size: 100%;
+  padding: 6px 8px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.walk-form-submit {
+  grid-column: 1 / -1;
+  margin-block-start: 4px;
+}
+
 dialog:modal {
   overscroll-behavior: contain;
   border: 1px solid #d0d7de;
